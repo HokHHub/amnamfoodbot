@@ -6,3 +6,11 @@ export function getMealTimeMSK() {
   if (hour < 23) return "evening";
   return "night";
 }
+
+export function getMealTimeByTime(hour) {
+
+  if (hour < 11) return "morning";
+    if (hour < 18) return "day";
+    if (hour < 23) return "evening";
+    return "night";
+}

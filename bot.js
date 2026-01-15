@@ -1,6 +1,6 @@
 import { ensureUser } from "./db/users.js";
 import { saveMeal } from "./db/meals.js";
-import { getMealTimeMSK } from "./utils/time.js";
+import { getMealTimeMSK, getMealTimeByTime } from "./utils/time.js";
 import { db } from './db/index.js'
 import schedule from 'node-schedule'
 import FormData from "form-data";
@@ -66,12 +66,41 @@ async function setFoodByText(ctx) {
     pendingFoodTitle.set(telegramID, true)
     await ctx.reply("📸 Отправьте фото или введите название блюда и вес.")
 }
+let pendingFoodTime = []
+async function setFoodTimeDB(telegramID, time, food_name, food_weight, food_calories) {
+   db.prepare(`
+          INSERT INTO meals (
+            telegram_id,date,meal_time,name,weight_g,calories_kcal,image_url
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          telegramID,
+          new Date().toISOString().slice(0, 10),
+          getMealTimeByTime(time),
+          food_name,
+          food_weight,
+          food_calories,
+          'User entered the text'
+  );
+}
 
 function resetPending(telegramID) {
       pendingGoal.delete(telegramID);
       pendingDelete.delete(telegramID);
       pendingFoodTitle.delete(telegramID);
       pendingPhotos.delete(telegramID);
+      pendingFoodTime = []
+}
+
+async function setFoodTime(ctx, time) {
+  if (time == 'morning') {
+    setFoodTimeDB(ctx.from.id, 10, pendingFoodTime[1].name, pendingFoodTime[1].weight_g, pendingFoodTime[1].calories_kcal)
+  } else if (time == 'day') {
+    setFoodTimeDB(ctx.from.id, 12, pendingFoodTime[1].name, pendingFoodTime[1].weight_g, pendingFoodTime[1].calories_kcal)
+  } else if (time == 'evening') {
+    setFoodTimeDB(ctx.from.id, 19, pendingFoodTime[1].name, pendingFoodTime[1].weight_g, pendingFoodTime[1].calories_kcal)
+  }
+
+  toStartFunc(ctx)
 }
 
 async function toStartFunc (ctx) {
@@ -225,8 +254,13 @@ bot.on("callback_query:data", async (ctx) => {
         DeleteSelect(ctx)
     } else if (callbackData == "start_changeGoal") {
         ChangeGoal(ctx)
+    } else if (callbackData == "setMorning_time") {
+        setFoodTime(ctx, 'morning')
+    } else if (callbackData == "setDay_time") {
+        setFoodTime(ctx, 'day')
+    } else if (callbackData == "setEvening_time") {
+        setFoodTime(ctx, 'evening')
     }
-
     if (newText) {
         await ctx.editMessageText(newText, {
             reply_markup: keyboardToStartInline
@@ -437,6 +471,14 @@ async function SeeHistory(ctx, period) {
   }
 }
 
+
+const toSetTime = [
+    ['🌅 На завтрак', 'setMorning_time'],
+    ['🏙️ На обед', 'setDay_time'],
+    ['🌆 На ужин', 'setEvening_time'],
+]
+const btnToSetTime = toSetTime.map(([label, data]) => InlineKeyboard.text(label, data))
+const keyboardToSetTime = InlineKeyboard.from([btnToSetTime])
 bot.on('message', async (ctx) => {
     const telegramID = ctx.from.id
     
@@ -557,26 +599,28 @@ bot.on('message', async (ctx) => {
           return;
         }
 
-        // сохраняем в базу
-        db.prepare(`
-          INSERT INTO meals (
-            telegram_id,date,meal_time,name,weight_g,calories_kcal,image_url
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          telegramID,
-          new Date().toISOString().slice(0, 10),
-          getMealTimeMSK(),
-          food.name,
-          food.weight_g,
-          food.calories_kcal,
-          'User entered the text'
-        );
-
         await ctx.reply(
           `🍽 ${food.name}\n⚖️ ${food.weight_g} г\n🔥 ${food.calories_kcal} ккал`
         , {
-            reply_markup: keyboardToStartInline
+            reply_markup: keyboardToSetTime
         });
+
+        // сохраняем в базу
+        // db.prepare(`
+        //   INSERT INTO meals (
+        //     telegram_id,date,meal_time,name,weight_g,calories_kcal,image_url
+        //   ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        // `).run(
+        //   telegramID,
+        //   new Date().toISOString().slice(0, 10),
+        //   getMealTimeMSK(),
+        //   food.name,
+        //   food.weight_g,
+        //   food.calories_kcal,
+        //   'User entered the text'
+        // );
+        pendingFoodTime.push(telegramID, food)
+
             
         } else return })
           
